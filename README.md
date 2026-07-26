@@ -1,6 +1,6 @@
 # vs-fgs
 
-A VapourSynth plugin for applying Film Grain Synthesis (FGS) using the [dav1d](https://code.videolan.org/videolan/dav1d) engine.
+A VapourSynth plugin for applying Film Grain Synthesis' table (FGS) using the [dav1d](https://code.videolan.org/videolan/dav1d) decoder.
 
 Since `dav1d` is widely regarded as the best and fastest AV1 decoder available, its FGS engine is fully spec-compliant with **AFGS1** (AOMedia Film Grain Synthesis 1), guaranteeing highly accurate, performant, and standardized grain generation.
 
@@ -20,7 +20,7 @@ import vsfgs
 core = vs.core
 
 # 1. Load your video
-clip = core.lsmas.LWLibavSource("source.mkv")
+clip = your_video_loader("source.mkv")
 
 # 2. Apply Film Grain
 # - ignore_chroma: If True, grain is only applied to Luma (Chroma is copied).
@@ -55,9 +55,9 @@ For an advanced visual editor to fine-tune these parameters and for more details
 | **macOS** | x86_64, Apple Silicon | ✅ | ❌ |
 
 **Benchmark Comparison** *(2,000 frames of real 1080p source via `BestSource`)*:
-Tests measure clean frame throughput and processor scaling across native chroma sub-samplings, comparing `vsfgs` against `Grainer.GAUSS` (from `vsdeband`). It also demonstrates the speedup of `dav1d`'s hardware SIMD Assembly optimizations over unvectorized reference C code (`simd='none'`).
+Tests compared `vsfgs` against `Grainer.GAUSS` (from `vsjetpack`). It also demonstrates the speedup of `dav1d`'s hardware SIMD Assembly optimizations over unvectorized reference C code (`simd='none'`).
 
-| Format | Baseline (BestSource + 16b) | `vsfgs` (SIMD: Auto / AVX-512) | `vsfgs` (SIMD: None / Plain C) | `Grainer.GAUSS` (`vsdeband`) |
+| Format | Baseline (BestSource + 16bit conversion) | `vsfgs` (SIMD: Auto / AVX-512) | `vsfgs` (SIMD: None / Plain C) | `Grainer.GAUSS` (`vsjetpack`) |
 | --- | --- | --- | --- | --- |
 | **YUV420P16** | ~1128 FPS | **~557 FPS** | ~514 FPS | ~347 FPS |
 | **YUV422P16** | ~866 FPS | **~434 FPS** | ~425 FPS | ~322 FPS |
