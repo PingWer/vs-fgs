@@ -36,10 +36,11 @@ clip.set_output()
 For each processed frame, `vsfgs` outputs the exact seed integer used during synthesis into the VapourSynth frame properties map: **`FGS_Seed`**
 
 
-## Advanced Customization
+## Input Format & Advanced Customization
 
-`vsfgs` allows for extreme and advanced customization of the film grain pattern. The logic for synthesizing grain relies on a detailed parameter table.
-For an advanced visual editor to fine-tune these parameters and for more details on the grain configuration, please refer to the **FGSEditor** wiki:
+`vsfgs` requires the input grain file to be a `.txt` file formatted according to a specific FGS table specification. It allows for extreme and advanced customization of the film grain synthesis pattern.
+
+For complete details on the required text syntax, grain parameters, and an advanced visual editor to create and fine-tune these tables, please refer to the **FGSEditor** wiki:
 [https://github.com/PingWer/FGSEditor](https://github.com/PingWer/FGSEditor)
 
 ## Performance & Compatibility
@@ -95,9 +96,18 @@ To compile the plugin manually, you must have a working C++ toolchain and Meson 
 If you only want to compile the VapourSynth plugin binary (DLL/SO/DYLIB) without installing it via pip, you can use Meson directly:
 
 ```bash
-meson setup build --buildtype=release
+meson setup build --buildtype=release --vsenv
 meson compile -C build
 ```
+## TODO
+
+- [ ] **Binary FGS Support**: Support loading film grain synthesis tables directly from binary format.
+- [ ] **Direct Video Extraction**: Support direct extraction of FGS tables from encoded video files (will require `grav1synth`).
+
+## Community & Support
+
+For questions, feedback, or troubleshooting, feel free to join and reach out on the **AV1 Weeb edition** [Discord server](https://discord.gg/NbwnwhcgUq)
+
 ## License
 
 This project is licensed under the **MIT License**.
