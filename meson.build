@@ -1,5 +1,5 @@
 project('vsfgs', ['c', 'cpp'],
-  version: '0.5.1',
+  version: '0.6.0',
   default_options: ['cpp_std=c++17', 'c_std=c99', 'buildtype=release']
 )
 

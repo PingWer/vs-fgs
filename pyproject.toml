@@ -4,7 +4,7 @@ build-backend = "mesonpy"
 
 [project]
 name = "vsfgs"
-version = "0.5.1"
+version = "0.6.0"
 description = "A VapourSynth plugin for applying Film Grain Synthesis (FGS) using the dav1d engine."
 readme = "README.md"
 license = {text = "MIT"}

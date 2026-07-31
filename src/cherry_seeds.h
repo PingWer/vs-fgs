@@ -107,7 +107,7 @@ static const unsigned int CHERRY_SEEDS[] = {
     20,
     64176,
     63023,
-    0,
+    42069,
     63947,
     65464,
     59724,

@@ -24,9 +24,10 @@ clip = your_video_loader("source.mkv")
 
 # 2. Apply Film Grain
 # - ignore_chroma: If True, grain is only applied to Luma (Chroma is copied).
-# - static: If True, uses the seed from the FGS table for all frames (if dynamic FGS, per event). If False, rotates the seed for each frame.
+# - static: If True, uses the seed from the FGS table for all frames (if dynamic FGS, per event). If False, rotates the seed for each frame. Note: for `.bin` files, dynamic_seed is disabled automatically.
 # - simd: Hardware SIMD architecture ('auto', 'avx512', 'avx2', 'sse41', 'sse3', 'sse2', or 'none'/'c' for plain C). Defaults to 'auto'.
-clip = vsfgs.apply_fgs(clip, "grain_table.txt", ignore_chroma=False, static=False, simd="auto")
+# - temporal_average: Apply temporal smoothing to the generated grain. Provide a float (weight) or a tuple (weight, radius).
+clip = vsfgs.apply_fgs(clip, "grain_table.bin", ignore_chroma=False, static=False, simd="auto", temporal_average=0.5)
 
 clip.set_output()
 ```
@@ -38,10 +39,10 @@ For each processed frame, `vsfgs` outputs the exact seed integer used during syn
 
 ## Input Format & Advanced Customization
 
-`vsfgs` requires the input grain file to be a `.txt` file formatted according to a specific FGS table specification. It allows for extreme and advanced customization of the film grain synthesis pattern.
+`vsfgs` supports input grain files in both standard **`.txt` (AFGS1 textual format)** and directly compiled **`.bin` (Binary format)**. It allows for extreme and advanced customization of the film grain synthesis pattern.
 
-For complete details on the required text syntax, grain parameters, and an advanced visual editor to create and fine-tune these tables, please refer to the **FGSEditor** wiki:
-[https://github.com/PingWer/FGSEditor](https://github.com/PingWer/FGSEditor)
+For complete details on the required text syntax, binary packing parameters, and an advanced visual editor to create and fine-tune these tables, please refer to the **FGSEditor** wiki:
+[https://github.com/PingWer/FGSEditor](https://github.com/PingWer/FGSEditor/wiki)
 
 ## Performance & Compatibility
 
@@ -101,7 +102,7 @@ meson compile -C build
 ```
 ## TODO
 
-- [ ] **Binary FGS Support**: Support loading film grain synthesis tables directly from binary format.
+- [x] **Binary FGS Support**: Support loading film grain synthesis tables directly from binary format.
 - [ ] **Direct Video Extraction**: Support direct extraction of FGS tables from encoded video files (will require `grav1synth`).
 
 ## Community & Support
