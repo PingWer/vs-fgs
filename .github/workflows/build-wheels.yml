@@ -41,6 +41,12 @@ jobs:
           CIBW_TEST_COMMAND: "python -c \"import vsfgs\""
           CIBW_TEST_SKIP: "*-*linux_{aarch64,ppc64le,s390x} *-win_arm64 *-macosx_arm64"
 
+      - name: Retag wheels for ABI independence
+        shell: bash
+        run: |
+          python -m pip install wheel
+          python -m wheel tags --remove --python-tag py3 --abi-tag none ./wheelhouse/*.whl
+
       - name: Upload wheels as artifact
         uses: actions/upload-artifact@v4
         with:

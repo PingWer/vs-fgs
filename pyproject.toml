@@ -4,14 +4,16 @@ build-backend = "mesonpy"
 
 [project]
 name = "vsfgs"
-version = "0.6.0"
+version = "0.7.0"
 description = "A VapourSynth plugin for applying Film Grain Synthesis (FGS) using the dav1d engine."
 readme = "README.md"
 license = {text = "MIT"}
 keywords = ["vapoursynth", "film-grain", "fgs", "dav1d", "video-processing", "afgs1", "av1", "simd"]
 requires-python = ">=3.13"
 dependencies = [
-    "vapoursynth>=74"
+    "vapoursynth>=74",
+    "vapoursynth-bestsource",
+    "vapoursynth-ffms2",
 ]
 authors = [
     { name = "PingWer74" }
