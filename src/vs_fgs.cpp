@@ -27,6 +27,7 @@ struct FGSData {
     bool is_8bpc;
     bool is_yuv;
     int dynamic_seed;
+    int seed_list;
 };
 
 static const VSFrame *VS_CC vs_fgs_get_frame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
@@ -59,7 +60,11 @@ static const VSFrame *VS_CC vs_fgs_get_frame(int n, int activationReason, void *
         Dav1dFilmGrainData fd = d->fg_data_array[idx];
         
         if (d->dynamic_seed) {
-            fd.seed = CHERRY_SEEDS[n % NUM_CHERRY_SEEDS];
+            if (d->seed_list == 1) {
+                fd.seed = NETFLIX_SEEDS[n % NUM_NETFLIX_SEEDS];
+            } else {
+                fd.seed = IGOR_SEEDS[n % NUM_IGOR_SEEDS];
+            }
         }
         
         VSMap *props = vsapi->getFramePropertiesRW(dst);
@@ -143,6 +148,7 @@ static void VS_CC vs_fgs_create(const VSMap *in, VSMap *out, void *userData, VSC
     std::memcpy(d->fg_data_array.data(), data_ptr, size);
     
     d->dynamic_seed = vsapi->mapGetIntSaturated(in, "dynamic_seed", 0, nullptr);
+    d->seed_list = vsapi->mapGetIntSaturated(in, "seed_list", 0, nullptr);
     
     int err = 0;
     int64_t simd_mask_val = vsapi->mapGetInt(in, "simd_mask", 0, &err);
@@ -177,5 +183,5 @@ static void VS_CC vs_fgs_create(const VSMap *in, VSMap *out, void *userData, VSC
 VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin *plugin, const VSPLUGINAPI *vspapi) {
     dav1d_init_cpu();
     vspapi->configPlugin("com.vs.fgs", "fgs", "Film Grain Synthesis via dav1d", VS_MAKE_VERSION(1, 0), VS_MAKE_VERSION(4, 0), 0, plugin);
-    vspapi->registerFunction("FGS", "clip:vnode;fgs_data:data;dynamic_seed:int:opt;simd_mask:int:opt;", "clip:vnode;", vs_fgs_create, nullptr, plugin);
+    vspapi->registerFunction("FGS", "clip:vnode;fgs_data:data;dynamic_seed:int:opt;simd_mask:int:opt;seed_list:int:opt;", "clip:vnode;", vs_fgs_create, nullptr, plugin);
 }

@@ -1,5 +1,5 @@
 project('vsfgs', ['c', 'cpp'],
-  version: '0.6.0',
+  version: '0.7.0',
   default_options: ['cpp_std=c++17', 'c_std=c99', 'buildtype=release']
 )
 
@@ -26,5 +26,8 @@ plugin = shared_library('vsfgs',
 
 py.install_sources(
   'vsfgs/__init__.py',
+  'vsfgs/core.py',
+  'vsfgs/parser.py',
+  'vsfgs/source.py',
   subdir: 'vsfgs'
 )
