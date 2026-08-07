@@ -37,7 +37,7 @@ jobs:
           CIBW_BEFORE_ALL_LINUX: "if command -v apk; then apk add nasm; elif command -v dnf; then dnf install -y nasm; elif command -v yum; then yum install -y nasm; else apt-get update && apt-get install -y nasm; fi"
           CIBW_BEFORE_ALL_WINDOWS: "choco install nasm"
           CIBW_BEFORE_ALL_MACOS: "export HOMEBREW_NO_AUTO_UPDATE=1; export HOMEBREW_NO_REQUIRE_TAP_TRUST=1; brew install nasm"
-          CIBW_SKIP: "cp39-* cp310-* cp311-* cp312-* *t-*"
+          CIBW_BUILD: "cp313-*"
           CIBW_TEST_COMMAND: "python -c \"import vsfgs\""
           CIBW_TEST_SKIP: "*-*linux_{aarch64,ppc64le,s390x} *-win_arm64 *-macosx_arm64"
 
