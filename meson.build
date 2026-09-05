@@ -1,5 +1,5 @@
 project('vsfgs', ['c', 'cpp'],
-  version: '0.7.0',
+  version: '1.0.0',
   default_options: ['cpp_std=c++17', 'c_std=c99', 'buildtype=release']
 )
 
@@ -28,6 +28,5 @@ py.install_sources(
   'vsfgs/__init__.py',
   'vsfgs/core.py',
   'vsfgs/parser.py',
-  'vsfgs/source.py',
   subdir: 'vsfgs'
 )
