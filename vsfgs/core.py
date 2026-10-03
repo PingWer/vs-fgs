@@ -1,7 +1,6 @@
 import typing
-import bisect
 import vapoursynth as vs
-from .parser import Dav1dFilmGrainData, _parse_binary_fgs
+from .parser import _parse_binary_fgs, _parse_text_fgs
 
 core = vs.core
 
@@ -69,146 +68,13 @@ def apply_fgs(
     if fgs_file_path.lower().endswith(".bin"):
         fgs_bytes = _parse_binary_fgs(fgs_file_path, clip.num_frames)
     else:
-        blocks = []
-        current_block = None
-        bare_lines = []
-
-        with open(fgs_file_path, "r") as f:
-            for line in f:
-                parts = line.strip().split()
-                if not parts:
-                    continue
-
-                if parts[0] == "E":
-                    start_t = int(parts[1])
-                    end_t = int(parts[2])
-                    if start_t == 0 and end_t == 0:
-                        end_t = float("inf")
-
-                    current_block = {
-                        "lines": [parts],
-                        "start_time": start_t,
-                        "end_time": end_t,
-                    }
-                    blocks.append(current_block)
-                elif current_block is not None:
-                    current_block["lines"].append(parts)
-                elif parts[0] not in ("filmgrn1",):
-                    bare_lines.append(parts)
-
-        if not blocks:
-            blocks.append(
-                {"lines": bare_lines, "start_time": 0, "end_time": float("inf")}
-            )
-
-        parsed_blocks = []
-        required_tokens = {"p", "sY", "sCb", "sCr", "cY", "cCb", "cCr"}
-
-        for b_idx, b in enumerate(blocks):
-            data = Dav1dFilmGrainData()
-            found_tokens = set()
-
-            try:
-                for parts in b["lines"]:
-                    token = parts[0]
-                    found_tokens.add(token)
-                    if token == "E":
-                        data.seed = int(parts[4])
-                    elif token == "p":
-                        data.ar_coeff_lag = int(parts[1])
-                        data.ar_coeff_shift = int(parts[2])
-                        data.grain_scale_shift = int(parts[3])
-                        data.scaling_shift = int(parts[4])
-                        data.chroma_scaling_from_luma = int(parts[5])
-                        data.overlap_flag = int(parts[6])
-                        data.uv_mult[0] = int(parts[7]) - 128
-                        data.uv_luma_mult[0] = int(parts[8]) - 128
-                        data.uv_offset[0] = int(parts[9]) - 256
-                        data.uv_mult[1] = int(parts[10]) - 128
-                        data.uv_luma_mult[1] = int(parts[11]) - 128
-                        data.uv_offset[1] = int(parts[12]) - 256
-                    elif token == "sY":
-                        data.num_y_points = int(parts[1])
-                        for i in range(data.num_y_points):
-                            data.y_points[i][0] = int(parts[2 + i * 2])
-                            data.y_points[i][1] = int(parts[3 + i * 2])
-                    elif token == "sCb":
-                        data.num_uv_points[0] = int(parts[1])
-                        for i in range(data.num_uv_points[0]):
-                            data.uv_points[0][i][0] = int(parts[2 + i * 2])
-                            data.uv_points[0][i][1] = int(parts[3 + i * 2])
-                    elif token == "sCr":
-                        data.num_uv_points[1] = int(parts[1])
-                        for i in range(data.num_uv_points[1]):
-                            data.uv_points[1][i][0] = int(parts[2 + i * 2])
-                            data.uv_points[1][i][1] = int(parts[3 + i * 2])
-                    elif token == "cY":
-                        for i in range(len(parts) - 1):
-                            data.ar_coeffs_y[i] = int(parts[1 + i])
-                    elif token == "cCb":
-                        for i in range(len(parts) - 1):
-                            data.ar_coeffs_uv[0][i] = int(parts[1 + i])
-                    elif token == "cCr":
-                        for i in range(len(parts) - 1):
-                            data.ar_coeffs_uv[1][i] = int(parts[1 + i])
-            except (IndexError, ValueError) as e:
-                raise ValueError(
-                    f"vsfgs: malformed parameters in FGS file at Event {b_idx + 1}, line: {' '.join(parts)}"
-                ) from e
-
-            missing_tokens = required_tokens - found_tokens
-            if missing_tokens:
-                raise ValueError(
-                    f"vsfgs: missing required FGS fields {missing_tokens} in Event {b_idx + 1}"
-                )
-
-            data.clip_to_restricted_range = (
-                1  # Could be exposed in the signature in the future
-            )
-
-            parsed_blocks.append(
-                {
-                    "data_bytes": bytes(data),
-                    "start_time": b["start_time"],
-                    "end_time": b["end_time"],
-                }
-            )
-
-        fps_num = clip.fps.numerator
-        fps_den = clip.fps.denominator
-        if fps_num == 0:
-            raise ValueError(
-                "vs_fgs requires a constant framerate clip for dynamic FGS parsing. Please set clip fps."
-            )
-
-        timebase_scale = 10000000.0
-        fgs_structs_bytes = bytearray()
-        zero_data = bytes(Dav1dFilmGrainData())
-
-        start_times = [b["start_time"] for b in parsed_blocks]
-
-        for n in range(clip.num_frames):
-            frame_time_exact = (n * fps_den * timebase_scale) / fps_num
-            frame_time = int(round(frame_time_exact))
-
-            # 10% of a frame duration as safety margin for floating point / timestamp drift
-            tolerance = ((fps_den * timebase_scale) / fps_num) * 0.1
-
-            if ignore_length and len(parsed_blocks) == 1:
-                active_bytes = parsed_blocks[0]["data_bytes"]
-            else:
-                idx = bisect.bisect_right(start_times, frame_time) - 1
-                if (
-                    idx >= 0
-                    and frame_time <= parsed_blocks[idx]["end_time"] + tolerance
-                ):
-                    active_bytes = parsed_blocks[idx]["data_bytes"]
-                else:
-                    active_bytes = zero_data
-
-            fgs_structs_bytes.extend(active_bytes)
-
-        fgs_bytes = bytes(fgs_structs_bytes)
+        fgs_bytes = _parse_text_fgs(
+            fgs_file_path,
+            clip.num_frames,
+            clip.fps.numerator,
+            clip.fps.denominator,
+            ignore_length=ignore_length,
+        )
 
     # For binary FGS files, seeds and parameters are pre-baked per-frame.
     is_binary = fgs_file_path.lower().endswith(".bin")
