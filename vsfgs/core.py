@@ -106,10 +106,34 @@ def apply_fgs(
     else:
         raise TypeError("vsfgs: simd parameter must be a string or an integer bitmask.")
 
+    # Ensure dimensions satisfy dav1d SIMD block requirements (multiples of 64, min 64x64) in AVX-512 and AVX2 routines
+    orig_w, orig_h = clip.width, clip.height
+    align_w = 64
+    align_h = 64
+    target_w = max(64, ((orig_w + align_w - 1) // align_w) * align_w)
+    target_h = max(64, ((orig_h + align_h - 1) // align_h) * align_h)
+    pad_w = target_w - orig_w
+    pad_h = target_h - orig_h
+
+    unpadded_clip = clip
+    if pad_w > 0 or pad_h > 0:
+        padded_clip = clip.std.AddBorders(right=pad_w, bottom=pad_h)
+    else:
+        padded_clip = clip
+
     fgs_clip = core.fgs.FGS(
-        clip, fgs_data=fgs_bytes, dynamic_seed=dynamic_seed, simd_mask=simd_mask, seed_list=seed_list
+        padded_clip,
+        fgs_data=fgs_bytes,
+        dynamic_seed=dynamic_seed,
+        simd_mask=simd_mask,
+        seed_list=seed_list,
     )
+
+    if pad_w > 0 or pad_h > 0:
+        fgs_clip = fgs_clip.std.Crop(right=pad_w, bottom=pad_h)
+
     base_fgs_clip = fgs_clip
+    clip = unpadded_clip
 
     temp_weight, temp_radius = 0.0, 0
     if temporal_average is not None:
