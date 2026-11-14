@@ -32,7 +32,7 @@ def _parse_binary_fgs(fgs_file_path: str, target_num_frames: int) -> bytes:
                 break
 
             data = Dav1dFilmGrainData()
-            _ = struct.unpack("<i", apply_grain_bytes)[0]
+            apply_grain = struct.unpack("<i", apply_grain_bytes)[0]
             data.seed = struct.unpack("<H", f.read(2))[0]
             _update_parameters = struct.unpack("<i", f.read(4))[0]
 
@@ -100,6 +100,12 @@ def _parse_binary_fgs(fgs_file_path: str, target_num_frames: int) -> bytes:
             data.overlap_flag = struct.unpack("<i", f.read(4))[0]
             data.clip_to_restricted_range = struct.unpack("<i", f.read(4))[0]
 
+            if apply_grain == 0:
+                data.num_y_points = 0
+                data.num_uv_points[0] = 0
+                data.num_uv_points[1] = 0
+                data.chroma_scaling_from_luma = 0
+
             records.append(bytes(data))
 
     if not records:
@@ -115,6 +121,52 @@ def _parse_binary_fgs(fgs_file_path: str, target_num_frames: int) -> bytes:
     return bytes(fgs_structs_bytes)
 
 
+def _create_default_film_grain_data(seed: int = 7391) -> Dav1dFilmGrainData:
+    data = Dav1dFilmGrainData()
+    data.seed = seed
+    data.clip_to_restricted_range = 1
+    data.ar_coeff_lag = 3
+    data.ar_coeff_shift = 8
+    data.grain_scale_shift = 0
+    data.scaling_shift = 8
+    data.chroma_scaling_from_luma = 0
+    data.overlap_flag = 1
+    data.uv_mult[0] = 0
+    data.uv_luma_mult[0] = 0
+    data.uv_offset[0] = 0
+    data.uv_mult[1] = 0
+    data.uv_luma_mult[1] = 0
+    data.uv_offset[1] = 0
+    data.num_y_points = 0
+    data.num_uv_points[0] = 0
+    data.num_uv_points[1] = 0
+    return data
+
+
+def _extract_scaling_points(
+    raw_coords: list[str], max_pts: int
+) -> list[tuple[int, int]]:
+    pairs = []
+    for i in range(0, len(raw_coords) - 1, 2):
+        try:
+            vx = int(raw_coords[i])
+            vy = int(raw_coords[i + 1])
+            pairs.append((vx, vy))
+        except ValueError:
+            continue
+    if not pairs:
+        return []
+    if pairs != sorted(pairs, key=lambda pt: pt[0]):
+        pairs.sort(key=lambda pt: pt[0])
+    deduped = []
+    seen = set()
+    for x, y in pairs:
+        if x not in seen:
+            seen.add(x)
+            deduped.append((max(0, min(255, x)), max(0, min(255, y))))
+    return deduped[:max_pts]
+
+
 def _parse_text_fgs(
     fgs_file_path: str,
     target_num_frames: int,
@@ -128,28 +180,57 @@ def _parse_text_fgs(
 
     with open(fgs_file_path, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or line.startswith("//"):
+            clean = line.split("#", 1)[0].split("//", 1)[0].strip()
+            if not clean:
                 continue
 
-            parts = line.split()
+            parts = clean.split()
             if not parts:
                 continue
 
-            tag = parts[0]
-            if tag.lower() in ("filmgrn1", "afgs1"):
+            tag = parts[0].lower()
+            if tag in ("filmgrn1", "afgs1") or (
+                tag.startswith("filmgrn") and tag[7:].isdigit()
+            ):
                 continue
 
-            if tag.upper() == "E":
-                start_t = int(parts[1])
-                end_t = int(parts[2])
+            if tag == "e":
+                try:
+                    start_t = int(parts[1]) if len(parts) > 1 else 0
+                    end_t = int(parts[2]) if len(parts) > 2 else start_t + 10000000
+                except ValueError:
+                    start_t, end_t = 0, 10000000
+
                 if start_t == 0 and end_t == 0:
                     end_t = float("inf")
 
+                apply_grain = 1
+                seed = 7391
+                update_params = 1
+
+                if len(parts) > 3:
+                    try:
+                        apply_grain = int(parts[3])
+                    except ValueError:
+                        apply_grain = 1
+                if len(parts) > 4:
+                    try:
+                        seed = int(parts[4])
+                    except ValueError:
+                        seed = 7391
+                if len(parts) > 5:
+                    try:
+                        update_params = int(parts[5])
+                    except ValueError:
+                        update_params = 1
+
                 current_block = {
-                    "lines": [parts],
                     "start_time": start_t,
                     "end_time": end_t,
+                    "apply_grain": apply_grain,
+                    "seed": seed,
+                    "update_params": update_params,
+                    "lines": [],
                 }
                 blocks.append(current_block)
             elif current_block is not None:
@@ -159,33 +240,49 @@ def _parse_text_fgs(
 
     if not blocks:
         blocks.append(
-            {"lines": bare_lines, "start_time": 0, "end_time": float("inf")}
+            {
+                "lines": bare_lines,
+                "start_time": 0,
+                "end_time": float("inf"),
+                "apply_grain": 1,
+                "seed": 7391,
+                "update_params": 1,
+            }
         )
 
     parsed_blocks = []
+    prev_data = None
 
     for b_idx, b in enumerate(blocks):
-        data = Dav1dFilmGrainData()
-        data.clip_to_restricted_range = 1
-        found_tokens = set()
-        parts: list[str] = []
+        update_params = b["update_params"]
+        apply_grain = b["apply_grain"]
+        seed = b["seed"]
 
+        if update_params == 0 and prev_data is not None:
+            data = Dav1dFilmGrainData.from_buffer_copy(prev_data)
+            data.seed = seed
+        else:
+            data = _create_default_film_grain_data(seed=seed)
+
+        parts: list[str] = []
         try:
             for parts in b["lines"]:
                 tag = parts[0].lower()
-                found_tokens.add(tag)
 
-                if tag == "e":
-                    if len(parts) > 4:
-                        data.seed = int(parts[4])
-                elif tag == "p":
+                if tag == "p":
                     # p lag shift scale_shift scaling_shift chroma_scaling overlap [cb_mult cb_luma_mult cb_offset cr_mult cr_luma_mult cr_offset]
-                    data.ar_coeff_lag = int(parts[1])
-                    data.ar_coeff_shift = int(parts[2])
-                    data.grain_scale_shift = int(parts[3])
-                    data.scaling_shift = int(parts[4])
-                    data.chroma_scaling_from_luma = int(parts[5])
-                    data.overlap_flag = int(parts[6])
+                    if len(parts) > 1:
+                        data.ar_coeff_lag = int(parts[1])
+                    if len(parts) > 2:
+                        data.ar_coeff_shift = int(parts[2])
+                    if len(parts) > 3:
+                        data.grain_scale_shift = int(parts[3])
+                    if len(parts) > 4:
+                        data.scaling_shift = int(parts[4])
+                    if len(parts) > 5:
+                        data.chroma_scaling_from_luma = int(parts[5])
+                    if len(parts) > 6:
+                        data.overlap_flag = int(parts[6])
                     if len(parts) >= 13:
                         data.uv_mult[0] = int(parts[7]) - 128
                         data.uv_luma_mult[0] = int(parts[8]) - 128
@@ -194,45 +291,60 @@ def _parse_text_fgs(
                         data.uv_luma_mult[1] = int(parts[11]) - 128
                         data.uv_offset[1] = int(parts[12]) - 256
                 elif tag == "sy":
-                    num_pts = int(parts[1])
-                    data.num_y_points = min(num_pts, 14)
-                    for i in range(data.num_y_points):
-                        data.y_points[i][0] = int(parts[2 + i * 2])
-                        data.y_points[i][1] = int(parts[3 + i * 2])
+                    pts = _extract_scaling_points(
+                        parts[2:] if len(parts) > 2 else [], 14
+                    )
+                    data.num_y_points = len(pts)
+                    for i, (x, y) in enumerate(pts):
+                        data.y_points[i][0] = x
+                        data.y_points[i][1] = y
                 elif tag == "scb":
-                    num_pts = int(parts[1])
-                    data.num_uv_points[0] = min(num_pts, 10)
-                    for i in range(data.num_uv_points[0]):
-                        data.uv_points[0][i][0] = int(parts[2 + i * 2])
-                        data.uv_points[0][i][1] = int(parts[3 + i * 2])
+                    pts = _extract_scaling_points(
+                        parts[2:] if len(parts) > 2 else [], 10
+                    )
+                    data.num_uv_points[0] = len(pts)
+                    for i, (x, y) in enumerate(pts):
+                        data.uv_points[0][i][0] = x
+                        data.uv_points[0][i][1] = y
                 elif tag == "scr":
-                    num_pts = int(parts[1])
-                    data.num_uv_points[1] = min(num_pts, 10)
-                    for i in range(data.num_uv_points[1]):
-                        data.uv_points[1][i][0] = int(parts[2 + i * 2])
-                        data.uv_points[1][i][1] = int(parts[3 + i * 2])
-                elif tag == "cy":
+                    pts = _extract_scaling_points(
+                        parts[2:] if len(parts) > 2 else [], 10
+                    )
+                    data.num_uv_points[1] = len(pts)
+                    for i, (x, y) in enumerate(pts):
+                        data.uv_points[1][i][0] = x
+                        data.uv_points[1][i][1] = y
+                elif tag in ("cy", "y"):
                     num_coeffs = min(len(parts) - 1, 24)
                     for i in range(num_coeffs):
-                        data.ar_coeffs_y[i] = int(parts[1 + i])
-                elif tag == "ccb":
+                        data.ar_coeffs_y[i] = max(-128, min(127, int(parts[1 + i])))
+                elif tag in ("ccb", "cb"):
                     num_coeffs = min(len(parts) - 1, 28)
                     for i in range(num_coeffs):
-                        data.ar_coeffs_uv[0][i] = int(parts[1 + i])
-                elif tag == "ccr":
+                        data.ar_coeffs_uv[0][i] = max(-128, min(127, int(parts[1 + i])))
+                elif tag in ("ccr", "cr"):
                     num_coeffs = min(len(parts) - 1, 28)
                     for i in range(num_coeffs):
-                        data.ar_coeffs_uv[1][i] = int(parts[1 + i])
+                        data.ar_coeffs_uv[1][i] = max(-128, min(127, int(parts[1 + i])))
         except (IndexError, ValueError) as e:
             line_str = " ".join(parts) if parts else "<empty>"
             raise ValueError(
                 f"vsfgs: malformed parameters in FGS file at Event {b_idx + 1}, line: {line_str}"
             ) from e
 
-        if "p" not in found_tokens or "sy" not in found_tokens:
-            raise ValueError(
-                f"vsfgs: missing required FGS fields ('p' or 'sY') in Event {b_idx + 1}"
-            )
+        if data.chroma_scaling_from_luma:
+            data.num_uv_points[0] = 0
+            data.num_uv_points[1] = 0
+
+        # Preserve the valid parameter model before zeroing for apply_grain == 0
+        if update_params != 0 or prev_data is None:
+            prev_data = Dav1dFilmGrainData.from_buffer_copy(data)
+
+        if apply_grain == 0:
+            data.num_y_points = 0
+            data.num_uv_points[0] = 0
+            data.num_uv_points[1] = 0
+            data.chroma_scaling_from_luma = 0
 
         parsed_blocks.append(
             {
